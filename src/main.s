@@ -3,6 +3,8 @@
 PPUCTRL   = $2000
 PPUMASK   = $2001
 PPUSTATUS = $2002
+OAMADDR   = $2003
+OAMDATA   = $2004
 PPUADDR   = $2006
 PPUDATA   = $2007
 APUSTATUS = $4015
@@ -66,6 +68,9 @@ cell_value:     .res 1
 board_nibble:   .res 1
 old_head_x:     .res 1
 old_head_y:     .res 1
+old_direction:  .res 1
+food_x:         .res 1
+food_y:         .res 1
 music_mode:     .res 1
 music_step:     .res 1
 music_timer:    .res 1
@@ -102,6 +107,12 @@ game_melody:
     .byte 5, 7, 0, 8, 9, 0, 7, 0, 6, 8, 0, 7, 5, 0, 0, 0
     .byte 7, 0, 8, 10, 0, 9, 8, 0, 6, 0, 8, 9, 0, 7, 6, 0
     .byte 5, 0, 8, 7, 0, 6, 5, 0, 7, 9, 0, 8, 6, 0, 5, 0
+; Indexed by incoming direction * 4 + outgoing direction.
+corner_tiles:
+    .byte 0, 2, 0, 4        ; up -> right/left connects from below
+    .byte 14, 0, 4, 0       ; right -> up/down connects from left
+    .byte 0, 3, 0, 14       ; down -> right/left connects from above
+    .byte 3, 0, 2, 0        ; left -> up/down connects from right
 
 .segment "CODE"
 .proc Reset
@@ -144,7 +155,7 @@ game_melody:
     sta rng_hi
     lda #%10000000
     sta PPUCTRL
-    lda #%00001010
+    lda #%00011010
     sta PPUMASK
 MainLoop:
     lda frame
@@ -178,6 +189,18 @@ UpdateOver:
 
 .proc InitializePpu
     bit PPUSTATUS
+    lda #0
+    sta OAMADDR
+    ldx #64
+@hide_sprites:
+    lda #$FF
+    sta OAMDATA
+    lda #0
+    sta OAMDATA
+    sta OAMDATA
+    sta OAMDATA
+    dex
+    bne @hide_sprites
     lda #$3F
     sta PPUADDR
     lda #$00
@@ -238,7 +261,7 @@ UpdateOver:
     lda #$20
     ldx #$C0                ; row 6, column 0
     jsr SetPpuAddressAX
-    lda #3
+    lda #15
     ldx #(BOARD_W+2)
 @top:
     sta PPUDATA
@@ -247,7 +270,7 @@ UpdateOver:
     lda #$23
     ldx #$20                ; row 25, column 0
     jsr SetPpuAddressAX
-    lda #3
+    lda #15
     ldx #(BOARD_W+2)
 @bottom:
     sta PPUDATA
@@ -262,7 +285,7 @@ UpdateOver:
     lda temp
     ldx render_row
     jsr SetPpuAddressAX
-    lda #3
+    lda #15
     sta PPUDATA
     lda temp
     ldx render_row
@@ -273,7 +296,7 @@ UpdateOver:
     lda temp
     adc #0
     jsr SetPpuAddressAX
-    lda #3
+    lda #15
     sta PPUDATA
     lda render_row
     clc
@@ -338,6 +361,7 @@ UpdateOver:
     lda #DIR_RIGHT
     sta direction
     sta next_direction
+    sta old_direction
     lda #10
     sta speed
     sta move_timer
@@ -368,7 +392,7 @@ UpdateOver:
     sta snake_x,x
     lda #9
     sta snake_y,x
-    lda #1
+    lda #13                 ; horizontal body
     sta cell_value
     lda #13
     sta cell_x
@@ -378,7 +402,7 @@ UpdateOver:
     jsr SetBoardCell
     inc cell_x
     jsr GetBoardIndex
-    lda #1
+    lda #13
     sta cell_value
     jsr SetBoardCell
     inc cell_x
@@ -471,6 +495,8 @@ UpdateOver:
 .endproc
 
 .proc MoveSnake
+    lda direction
+    sta old_direction
     lda next_direction
     sta direction
     lda head_index
@@ -515,9 +541,11 @@ UpdateOver:
     bcc :+
     jmp @collision
 :
-    jsr GetBoardIndex
-    jsr GetBoardCell
-    cmp #2
+    lda cell_x
+    cmp food_x
+    bne @not_food
+    lda cell_y
+    cmp food_y
     bne @not_food
     lda #1
     sta ate_food
@@ -588,9 +616,8 @@ UpdateOver:
 @new_index:
     jsr GetBoardIndex
 @test_body:
+    jsr GetBoardIndex
     jsr GetBoardCell
-    beq @free
-    cmp #2
     beq @free
     jmp @collision
 @free:
@@ -627,7 +654,7 @@ UpdateOver:
     lda old_head_y
     sta cell_y
     jsr GetBoardIndex
-    lda #1
+    jsr GetBodyTile
     sta cell_value
     jsr SetBoardCell
     ldy dirty_count
@@ -635,7 +662,7 @@ UpdateOver:
     sta dirty_x,y
     lda cell_y
     sta dirty_y,y
-    lda #1
+    lda cell_value
     sta dirty_tile,y
     inc dirty_count
     lda ate_food
@@ -694,6 +721,28 @@ UpdateOver:
     jsr StopMusic
     jsr ClearBoardDisplay
     jsr CrashSound
+    rts
+.endproc
+
+.proc GetBodyTile
+    lda old_direction
+    cmp direction
+    bne @corner
+    lda direction
+    and #1
+    beq @vertical
+    lda #13                 ; horizontal
+    rts
+@vertical:
+    lda #1
+    rts
+@corner:
+    lda old_direction
+    asl a
+    asl a
+    ora direction
+    tax
+    lda corner_tiles,x
     rts
 .endproc
 
@@ -955,17 +1004,10 @@ UpdateOver:
     jsr GetBoardIndex
     jsr GetBoardCell
     bne @try
-    lda #2
-    sta cell_value
-    jsr SetBoardCell
-    ldy dirty_count
     lda cell_x
-    sta dirty_x,y
+    sta food_x
     lda cell_y
-    sta dirty_y,y
-    lda #2
-    sta dirty_tile,y
-    inc dirty_count
+    sta food_y
     rts
 .endproc
 
@@ -1131,6 +1173,7 @@ UpdateOver:
     pha
     lda board_nibble
     pha
+    jsr RenderFoodSprite
     jsr RenderStatus
     jsr RenderScore
     lda redraw_pending
@@ -1164,6 +1207,42 @@ UpdateOver:
     tax
     pla
     rti
+.endproc
+
+.proc RenderFoodSprite
+    lda #0
+    sta OAMADDR
+    lda state
+    cmp #STATE_PLAY
+    bne @hidden
+    lda food_y
+    asl a
+    asl a
+    asl a
+    clc
+    adc #55                 ; board row 7 starts at pixel 56; OAM Y is minus one
+    sta OAMDATA
+    lda #16
+    sta OAMDATA
+    lda #1                  ; sprite palette 1
+    sta OAMDATA
+    lda food_x
+    asl a
+    asl a
+    asl a
+    clc
+    adc #8                  ; board column 1 starts at pixel 8
+    sta OAMDATA
+    rts
+@hidden:
+    lda #$FF
+    sta OAMDATA
+    lda #16
+    sta OAMDATA
+    lda #0
+    sta OAMDATA
+    sta OAMDATA
+    rts
 .endproc
 
 .proc RenderBoardRow
