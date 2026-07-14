@@ -17,9 +17,10 @@ DIR_RIGHT = 1
 DIR_DOWN  = 2
 DIR_LEFT  = 3
 
-BOARD_W = 26
+BOARD_W = 30
 BOARD_H = 18
 BOARD_SIZE = BOARD_W * BOARD_H
+BOARD_BYTES = (BOARD_SIZE + 1) / 2
 
 .segment "HEADER"
     .byte "NES", $1A
@@ -61,9 +62,11 @@ dirty_x:        .res 3
 dirty_y:        .res 3
 dirty_tile:     .res 3
 pointer:        .res 2
+cell_value:     .res 1
+board_nibble:   .res 1
 
 .segment "BSS"
-board:   .res BOARD_SIZE
+board:   .res BOARD_BYTES
 snake_x: .res BOARD_SIZE
 snake_y: .res BOARD_SIZE
 
@@ -214,7 +217,7 @@ UpdateOver:
 
 .proc DrawBorder
     lda #$20
-    ldx #$C2                ; row 6, column 2
+    ldx #$C0                ; row 6, column 0
     jsr SetPpuAddressAX
     lda #3
     ldx #(BOARD_W+2)
@@ -223,7 +226,7 @@ UpdateOver:
     dex
     bne @top
     lda #$23
-    ldx #$22                ; row 25, column 2
+    ldx #$20                ; row 25, column 0
     jsr SetPpuAddressAX
     lda #3
     ldx #(BOARD_W+2)
@@ -233,7 +236,7 @@ UpdateOver:
     bne @bottom
     lda #$20
     sta temp
-    lda #$E2                ; row 7, column 2
+    lda #$E0                ; row 7, column 0
     sta render_row
     ldy #BOARD_H
 @sides:
@@ -297,7 +300,7 @@ UpdateOver:
     stx pointer
     lda #0
     ldy #0
-    ldx #>BOARD_SIZE
+    ldx #>BOARD_BYTES
 @clear:
     sta (pointer),y
     iny
@@ -305,7 +308,7 @@ UpdateOver:
     inc pointer+1
     dex
     bne @clear
-    ldx #<BOARD_SIZE
+    ldx #<BOARD_BYTES
     beq @cleared
 @remainder:
     sta (pointer),y
@@ -332,24 +335,34 @@ UpdateOver:
     lda #3
     sta snake_length
     ldx #0
-    lda #11
-    sta snake_x,x
-    lda #9
-    sta snake_y,x
-    inx
-    lda #12
-    sta snake_x,x
-    lda #9
-    sta snake_y,x
-    inx
     lda #13
     sta snake_x,x
     lda #9
     sta snake_y,x
+    inx
+    lda #14
+    sta snake_x,x
+    lda #9
+    sta snake_y,x
+    inx
+    lda #15
+    sta snake_x,x
+    lda #9
+    sta snake_y,x
     lda #1
-    sta board+(9*BOARD_W)+11
-    sta board+(9*BOARD_W)+12
-    sta board+(9*BOARD_W)+13
+    sta cell_value
+    lda #13
+    sta cell_x
+    lda #9
+    sta cell_y
+    jsr GetBoardIndex
+    jsr SetBoardCell
+    inc cell_x
+    jsr GetBoardIndex
+    jsr SetBoardCell
+    inc cell_x
+    jsr GetBoardIndex
+    jsr SetBoardCell
     lda #0
     sta dirty_count
     jsr PlaceFood
@@ -469,9 +482,7 @@ UpdateOver:
     jmp @collision
 :
     jsr GetBoardIndex
-    jsr PointBoard
-    ldy #0
-    lda (pointer),y
+    jsr GetBoardCell
     cmp #2
     bne @not_food
     lda #1
@@ -499,10 +510,9 @@ UpdateOver:
     sta dirty_tile,y
     inc dirty_count
     jsr GetBoardIndex
-    jsr PointBoard
-    ldy #0
     lda #0
-    sta (pointer),y
+    sta cell_value
+    jsr SetBoardCell
     jsr IncrementTail
 @restore_new:
     lda head_index
@@ -543,15 +553,14 @@ UpdateOver:
 @new_index:
     jsr GetBoardIndex
 @test_body:
-    jsr PointBoard
-    ldy #0
-    lda (pointer),y
+    jsr GetBoardCell
     cmp #1
     bne :+
     jmp @collision
 :
     lda #1
-    sta (pointer),y
+    sta cell_value
+    jsr SetBoardCell
     ldy dirty_count
     lda cell_x
     sta dirty_x,y
@@ -638,7 +647,7 @@ UpdateOver:
     sta pointer+1
     lda #0
     ldy #0
-    ldx #>BOARD_SIZE
+    ldx #>BOARD_BYTES
 @clear:
     sta (pointer),y
     iny
@@ -646,7 +655,7 @@ UpdateOver:
     inc pointer+1
     dex
     bne @clear
-    ldx #<BOARD_SIZE
+    ldx #<BOARD_BYTES
     beq @cleared
 @remainder:
     sta (pointer),y
@@ -690,12 +699,57 @@ UpdateOver:
 
 .proc PointBoard
     lda board_index
+    and #1
+    sta board_nibble
+    lda board_index_hi
+    lsr a
+    sta pointer+1
+    lda board_index
+    ror a
     clc
     adc #<board
     sta pointer
-    lda board_index_hi
+    lda pointer+1
     adc #>board
     sta pointer+1
+    rts
+.endproc
+
+.proc GetBoardCell
+    jsr PointBoard
+    ldy #0
+    lda (pointer),y
+    ldx board_nibble
+    beq :+
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+:
+    and #$0F
+    rts
+.endproc
+
+.proc SetBoardCell
+    jsr PointBoard
+    ldy #0
+    lda (pointer),y
+    ldx board_nibble
+    bne @high
+    and #$F0
+    ora cell_value
+    sta (pointer),y
+    rts
+@high:
+    and #$0F
+    sta temp
+    lda cell_value
+    asl a
+    asl a
+    asl a
+    asl a
+    ora temp
+    sta (pointer),y
     rts
 .endproc
 
@@ -770,12 +824,11 @@ UpdateOver:
     bcs @try
     sta cell_y
     jsr GetBoardIndex
-    jsr PointBoard
-    ldy #0
-    lda (pointer),y
+    jsr GetBoardCell
     bne @try
     lda #2
-    sta (pointer),y
+    sta cell_value
+    jsr SetBoardCell
     ldy dirty_count
     lda cell_x
     sta dirty_x,y
@@ -844,6 +897,8 @@ UpdateOver:
     pha
     lda render_row
     pha
+    lda board_nibble
+    pha
     jsr RenderStatus
     jsr RenderScore
     lda redraw_pending
@@ -857,6 +912,8 @@ UpdateOver:
     sta PPUADDR
     sta PPUADDR
     inc frame
+    pla
+    sta board_nibble
     pla
     sta render_row
     pla
@@ -883,25 +940,26 @@ UpdateOver:
     sbc redraw_pending
     sta render_row
     lda #0
-    sta board_index_hi
     ldx render_row
-@index:
+@board_address:
     cpx #0
-    beq @index_done
+    beq @board_address_done
     clc
-    adc #BOARD_W
-    bcc :+
-    inc board_index_hi
-:
+    adc #(BOARD_W/2)
     dex
-    bne @index
-@index_done:
-    sta board_index
+    bne @board_address
+@board_address_done:
+    clc
+    adc #<board
+    sta pointer
+    lda #>board
+    adc #0
+    sta pointer+1
     lda #$20
     sta temp
-    lda #$E3                ; row 7, column 3
+    lda #$E1                ; row 7, column 1
     ldx render_row
-@address:
+@ppu_address:
     cpx #0
     beq @write
     clc
@@ -910,16 +968,23 @@ UpdateOver:
     inc temp
 :
     dex
-    bne @address
+    bne @ppu_address
 @write:
     tax
     lda temp
     jsr SetPpuAddressAX
-    jsr PointBoard
     ldy #0
-    ldx #BOARD_W
+    ldx #(BOARD_W/2)
 @tile:
     lda (pointer),y
+    pha
+    and #$0F
+    sta PPUDATA
+    pla
+    lsr a
+    lsr a
+    lsr a
+    lsr a
     sta PPUDATA
     iny
     dex
@@ -935,7 +1000,7 @@ UpdateOver:
     beq @done
     lda #$20
     sta temp
-    lda #$E3
+    lda #$E1
     clc
     adc dirty_x,y
     ldx dirty_y,y
