@@ -83,7 +83,7 @@ help_text_end:
 press_text: .byte "    PRESS START    "
 play_text:  .byte "                   "
 pause_text: .byte "       PAUSED      "
-over_text:  .byte "  GAME OVER START  "
+over_text:  .byte "     GAME OVER     "
 score_text: .byte "SCORE 00000"
 
 .segment "CODE"
