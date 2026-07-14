@@ -52,6 +52,7 @@ ate_food:       .res 1
 render_row:     .res 1
 temp:           .res 1
 dirty_count:    .res 1
+clear_pending:  .res 1
 dirty_x:        .res 3
 dirty_y:        .res 3
 dirty_tile:     .res 3
@@ -139,6 +140,8 @@ UpdateTitle:
     jsr NewGame
     jmp MainLoop
 UpdateOver:
+    lda clear_pending
+    bne MainLoop
     lda buttons_new
     and #%00010000
     beq MainLoop
@@ -571,7 +574,22 @@ UpdateOver:
 @collision:
     lda #STATE_OVER
     sta state
+    jsr ClearBoardDisplay
     jsr CrashSound
+    rts
+.endproc
+
+.proc ClearBoardDisplay
+    lda #0
+    ldx #0
+@clear:
+    sta board,x
+    inx
+    cpx #BOARD_SIZE
+    bne @clear
+    sta dirty_count
+    lda #BOARD_H
+    sta clear_pending
     rts
 .endproc
 
@@ -670,7 +688,13 @@ UpdateOver:
     pha
     jsr RenderStatus
     jsr RenderScore
+    lda clear_pending
+    beq @dirty
+    jsr RenderClearRow
+    jmp @rendered
+@dirty:
     jsr RenderDirtyCells
+@rendered:
     lda #0
     sta PPUADDR
     sta PPUADDR
@@ -681,6 +705,39 @@ UpdateOver:
     tax
     pla
     rti
+.endproc
+
+.proc RenderClearRow
+    lda #BOARD_H
+    sec
+    sbc clear_pending
+    sta render_row
+    lda #$21
+    sta temp
+    lda #$09
+    ldx render_row
+@address:
+    cpx #0
+    beq @write
+    clc
+    adc #32
+    bcc :+
+    inc temp
+:
+    dex
+    bne @address
+@write:
+    tax
+    lda temp
+    jsr SetPpuAddressAX
+    lda #0
+    ldx #BOARD_W
+@tile:
+    sta PPUDATA
+    dex
+    bne @tile
+    dec clear_pending
+    rts
 .endproc
 
 .proc RenderDirtyCells
