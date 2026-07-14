@@ -64,6 +64,9 @@ dirty_tile:     .res 3
 pointer:        .res 2
 cell_value:     .res 1
 board_nibble:   .res 1
+music_mode:     .res 1
+music_step:     .res 1
+music_timer:    .res 1
 
 .segment "BSS"
 board:   .res BOARD_BYTES
@@ -85,6 +88,22 @@ play_text:  .byte "                   "
 pause_text: .byte "       PAUSED      "
 over_text:  .byte "     GAME OVER     "
 score_text: .byte "SCORE 00000"
+
+; Note IDs index NTSC APU timer periods. Zero is a rest.
+note_lo: .byte $00, $AE, $FF, $73, $F7, $AA, $7B, $52, $3F, $1C, $FD, $D4
+note_hi: .byte $00, $06, $04, $04, $03, $01, $01, $01, $01, $01, $00, $00
+title_melody:
+    .byte 5, 7, 9, 11, 9, 7, 5, 0, 6, 8, 10, 9, 8, 6, 5, 0
+    .byte 5, 8, 7, 10, 9, 11, 9, 7, 6, 8, 7, 6, 5, 0, 5, 0
+title_bass:
+    .byte 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0
+    .byte 1, 0, 0, 0, 2, 0, 3, 0, 1, 0, 3, 0, 1, 0, 0, 0
+game_melody:
+    .byte 5, 7, 8, 7, 5, 7, 9, 7, 6, 8, 10, 8, 6, 8, 9, 8
+    .byte 5, 8, 9, 8, 7, 9, 11, 9, 6, 8, 9, 7, 6, 7, 5, 0
+game_bass:
+    .byte 1, 0, 3, 0, 1, 0, 3, 0, 2, 0, 1, 0, 2, 0, 3, 0
+    .byte 1, 0, 4, 0, 2, 0, 3, 0, 1, 0, 3, 0, 1, 0, 3, 0
 
 .segment "CODE"
 .proc Reset
@@ -120,6 +139,7 @@ score_text: .byte "SCORE 00000"
     jsr InitializePpu
     lda #STATE_TITLE
     sta state
+    jsr StartTitleMusic
     lda #$5A
     sta rng_lo
     lda #$A7
@@ -135,6 +155,7 @@ MainLoop:
     sta last_frame
     jsr ReadController
     jsr RandomStep
+    jsr UpdateMusic
     lda state
     beq UpdateTitle
     cmp #STATE_OVER
@@ -372,6 +393,7 @@ UpdateOver:
     sta redraw_pending
     lda #STATE_PLAY
     sta state
+    jsr StartGameMusic
     rts
 .endproc
 
@@ -385,10 +407,12 @@ UpdateOver:
     bmi @unpause
     ora #$80
     sta move_timer
+    jsr PauseMusic
     rts
 @unpause:
     and #$7F
     sta move_timer
+    jsr ResumeMusic
     rts
 @directions:
     lda move_timer
@@ -635,6 +659,7 @@ UpdateOver:
 @collision:
     lda #STATE_OVER
     sta state
+    jsr StopMusic
     jsr ClearBoardDisplay
     jsr CrashSound
     rts
@@ -855,8 +880,125 @@ UpdateOver:
     rts
 .endproc
 
+.proc StartTitleMusic
+    lda #1
+    sta music_mode
+    lda #0
+    sta music_step
+    sta music_timer
+    lda #%00000110
+    sta APUSTATUS
+    rts
+.endproc
+
+.proc StartGameMusic
+    lda #2
+    sta music_mode
+    lda #0
+    sta music_step
+    sta music_timer
+    lda #%00000110
+    sta APUSTATUS
+    rts
+.endproc
+
+.proc PauseMusic
+    lda #3
+    sta music_mode
+    lda #0
+    sta APUSTATUS
+    rts
+.endproc
+
+.proc ResumeMusic
+    lda #2
+    sta music_mode
+    lda #0
+    sta music_timer
+    lda #%00000110
+    sta APUSTATUS
+    rts
+.endproc
+
+.proc StopMusic
+    lda #0
+    sta music_mode
+    sta APUSTATUS
+    rts
+.endproc
+
+.proc UpdateMusic
+    lda music_mode
+    beq @done
+    cmp #3
+    beq @done
+    lda music_timer
+    beq @next
+    dec music_timer
+    rts
+@next:
+    ldx music_step
+    lda music_mode
+    cmp #1
+    bne @game
+    lda title_melody,x
+    jsr PlayPulse2Note
+    lda title_bass,x
+    jsr PlayTriangleNote
+    lda #12
+    bne @tempo
+@game:
+    lda game_melody,x
+    jsr PlayPulse2Note
+    lda game_bass,x
+    jsr PlayTriangleNote
+    lda #8
+@tempo:
+    sta music_timer
+    inc music_step
+    lda music_step
+    and #$1F
+    sta music_step
+@done:
+    rts
+.endproc
+
+.proc PlayPulse2Note
+    tax
+    bne @note
+    lda #%10110000
+    sta $4004
+    rts
+@note:
+    lda #%10111000          ; duty 2, sustained, constant volume 8
+    sta $4004
+    lda note_lo,x
+    sta $4006
+    lda note_hi,x
+    ora #$F8
+    sta $4007
+    rts
+.endproc
+
+.proc PlayTriangleNote
+    tax
+    bne @note
+    lda #0
+    sta $4008
+    rts
+@note:
+    lda #$81                ; sustained triangle with linear counter reload
+    sta $4008
+    lda note_lo,x
+    sta $400A
+    lda note_hi,x
+    ora #$F8
+    sta $400B
+    rts
+.endproc
+
 .proc EatSound
-    lda #%00000001
+    lda #%00000111
     sta APUSTATUS
     lda #%10001111          ; duty 2, finite length, constant volume 15
     sta $4000

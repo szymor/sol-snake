@@ -7,6 +7,11 @@ graphics, so the source has no external asset dependencies.
 The playfield is 30 by 18 cells. Board cells are packed two per byte using
 4-bit values, while the snake coordinate ring buffers use 16-bit indices.
 
+The soundtrack uses pulse 2 for melody and triangle for bass. Pulse 1 and the
+noise channel remain available for food and game-over sound effects. Title and
+gameplay themes loop independently; music pauses with the game and stops on
+game over.
+
 ## Build
 
 Install the Debian packages and build the ROM:
