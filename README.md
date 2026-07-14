@@ -12,6 +12,8 @@ rendered as a hardware sprite, leaving all packed tile values available for the
 snake and walls.
 Snake graphics use a dedicated palette color that cycles through bright colors
 after every 16 pieces of food.
+Every five regular foods, a red timed bonus appears for about four seconds. It
+does not grow the snake and awards points equal to the current snake length.
 
 The soundtrack uses pulse 2 for melody. Pulse 1 and the noise channel remain
 available for food and game-over sound effects; the triangle channel is

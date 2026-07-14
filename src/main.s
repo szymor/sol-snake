@@ -49,6 +49,7 @@ snake_length:   .res 1
 snake_length_hi:.res 1
 score_lo:       .res 1
 score_hi:       .res 1
+score_top:      .res 1
 rng_lo:         .res 1
 rng_hi:         .res 1
 cell_x:         .res 1
@@ -76,7 +77,14 @@ music_mode:     .res 1
 music_step:     .res 1
 music_timer:    .res 1
 food_count:     .res 1
+bonus_count:    .res 1
 snake_color:    .res 1
+bonus_active:   .res 1
+bonus_x:        .res 1
+bonus_y:        .res 1
+bonus_timer:    .res 1
+score_add_lo:   .res 1
+score_add_hi:   .res 1
 
 .segment "BSS"
 board:   .res BOARD_BYTES
@@ -87,7 +95,7 @@ snake_y: .res BOARD_SIZE
 palette:
     .byte $0F, $30, $1A, $16, $0F, $30, $27, $16
     .byte $0F, $30, $1A, $16, $0F, $30, $27, $16
-    .byte $0F, $30, $1A, $16, $0F, $30, $27, $16
+    .byte $0F, $30, $1A, $16, $0F, $16, $27, $16
     .byte $0F, $30, $1A, $16, $0F, $30, $27, $16
 title_text: .byte "SOL SNAKE"
 title_text_end:
@@ -375,7 +383,10 @@ UpdateOver:
     sta tail_index_hi
     sta score_lo
     sta score_hi
+    sta score_top
     sta food_count
+    sta bonus_count
+    sta bonus_active
     sta snake_length_hi
     lda snake_colors
     sta snake_color
@@ -440,6 +451,7 @@ UpdateOver:
 .proc UpdatePlaying
     lda redraw_pending
     bne @done
+    jsr UpdateBonus
     lda buttons_new
     and #%00010000
     beq @directions
@@ -550,6 +562,20 @@ UpdateOver:
     jmp @collision
 :
     lda cell_x
+    ldx bonus_active
+    beq @regular_food
+    cmp bonus_x
+    bne @regular_food
+    lda cell_y
+    cmp bonus_y
+    bne @regular_food
+    lda #2
+    sta ate_food
+    lda #0
+    sta bonus_active
+    jmp @not_food_tail
+@regular_food:
+    lda cell_x
     cmp food_x
     bne @not_food
     lda cell_y
@@ -561,6 +587,7 @@ UpdateOver:
 @not_food:
     lda #0
     sta ate_food
+@not_food_tail:
     lda tail_index
     ldx tail_index_hi
     jsr PointSnakeY
@@ -674,12 +701,18 @@ UpdateOver:
     sta dirty_tile,y
     inc dirty_count
     lda ate_food
-    beq @done
+    cmp #1
+    beq @regular_score
+    cmp #2
+    beq @bonus_score
+    rts
+@regular_score:
     inc snake_length
     bne :+
     inc snake_length_hi
 :
     inc food_count
+    inc bonus_count
     lda food_count
     and #$0F
     bne :+
@@ -693,31 +726,11 @@ UpdateOver:
     lda snake_colors,x
     sta snake_color
 :
-    inc score_lo
-    lda score_lo
-    and #$0F
-    cmp #$0A
-    bne @score_carry
-    lda score_lo
-    clc
-    adc #$06
-    sta score_lo
-@score_carry:
-    lda score_lo
-    cmp #$A0
-    bcc @score_done
+    lda #10
+    sta score_add_lo
     lda #0
-    sta score_lo
-    inc score_hi
-    lda score_hi
-    and #$0F
-    cmp #$0A
-    bne @score_done
-    lda score_hi
-    clc
-    adc #$06
-    sta score_hi
-@score_done:
+    sta score_add_hi
+    jsr AddPoints
     lda snake_length
     and #$0F
     bne :+
@@ -727,6 +740,15 @@ UpdateOver:
     dec speed
 :
     jsr EatSound
+    lda bonus_count
+    cmp #5
+    bcc :+
+    lda #0
+    sta bonus_count
+    lda bonus_active
+    bne :+
+    jsr PlaceBonus
+:
     lda snake_length_hi
     cmp #>BOARD_SIZE
     bne :+
@@ -736,6 +758,14 @@ UpdateOver:
 :
     jsr PlaceFood
 @done:
+    rts
+@bonus_score:
+    lda snake_length
+    sta score_add_lo
+    lda snake_length_hi
+    sta score_add_hi
+    jsr AddPoints
+    jsr EatSound
     rts
 @collision:
     lda #STATE_OVER
@@ -1037,6 +1067,107 @@ UpdateOver:
     rts
 .endproc
 
+.proc PlaceBonus
+@try:
+    jsr RandomStep
+    lda rng_lo
+    and #$1F
+    cmp #BOARD_W
+    bcs @try
+    sta cell_x
+    jsr RandomStep
+    lda rng_hi
+    and #$1F
+    cmp #BOARD_H
+    bcs @try
+    sta cell_y
+    cmp food_y
+    bne @board
+    lda cell_x
+    cmp food_x
+    beq @try
+@board:
+    jsr GetBoardIndex
+    jsr GetBoardCell
+    bne @try
+    lda cell_x
+    sta bonus_x
+    lda cell_y
+    sta bonus_y
+    lda #240                ; about four seconds at 60 Hz
+    sta bonus_timer
+    lda #1
+    sta bonus_active
+    rts
+.endproc
+
+.proc UpdateBonus
+    lda bonus_active
+    beq @done
+    dec bonus_timer
+    bne @done
+    lda #0
+    sta bonus_active
+@done:
+    rts
+.endproc
+
+.proc AddPoints
+@point:
+    lda score_add_lo
+    ora score_add_hi
+    beq @done
+    lda score_add_lo
+    bne :+
+    dec score_add_hi
+:
+    dec score_add_lo
+    inc score_lo
+    lda score_lo
+    and #$0F
+    cmp #$0A
+    bne @carry_byte
+    lda score_lo
+    clc
+    adc #$06
+    sta score_lo
+@carry_byte:
+    lda score_lo
+    cmp #$A0
+    bcc @point
+    lda #0
+    sta score_lo
+    inc score_hi
+    lda score_hi
+    and #$0F
+    cmp #$0A
+    bne @carry_high
+    lda score_hi
+    clc
+    adc #$06
+    sta score_hi
+@carry_high:
+    lda score_hi
+    cmp #$A0
+    bcc @point
+    lda #0
+    sta score_hi
+    inc score_top
+    lda score_top
+    cmp #10
+    bcc @point
+    lda #9
+    sta score_top
+    lda #$99
+    sta score_hi
+    sta score_lo
+    lda #0
+    sta score_add_lo
+    sta score_add_hi
+@done:
+    rts
+.endproc
+
 .proc RandomStep
     lda rng_lo
     asl a
@@ -1201,6 +1332,7 @@ UpdateOver:
     pha
     jsr RenderSnakePalette
     jsr RenderFoodSprite
+    jsr RenderBonusSprite
     jsr RenderStatus
     jsr RenderScore
     lda redraw_pending
@@ -1267,7 +1399,7 @@ UpdateOver:
     adc food_animation
     adc #128
     sta OAMDATA
-    lda #1                  ; sprite palette 1
+    lda #0                  ; regular food uses white sprite palette 0
     sta OAMDATA
     lda food_x
     asl a
@@ -1281,6 +1413,56 @@ UpdateOver:
     lda #$FF
     sta OAMDATA
     lda #16
+    sta OAMDATA
+    lda #0
+    sta OAMDATA
+    sta OAMDATA
+    rts
+.endproc
+
+.proc RenderBonusSprite
+    lda #4
+    sta OAMADDR
+    lda state
+    cmp #STATE_PLAY
+    bne @hidden
+    lda bonus_active
+    beq @hidden
+    lda bonus_timer
+    cmp #60
+    bcs @visible
+    and #8
+    beq @hidden
+@visible:
+    lda bonus_y
+    asl a
+    asl a
+    asl a
+    clc
+    adc #55
+    sta OAMDATA
+    lda frame
+    lsr a
+    lsr a
+    lsr a
+    and #3
+    clc
+    adc #128
+    sta OAMDATA
+    lda #1                  ; sprite palette 1 uses bright red
+    sta OAMDATA
+    lda bonus_x
+    asl a
+    asl a
+    asl a
+    clc
+    adc #8
+    sta OAMDATA
+    rts
+@hidden:
+    lda #$FF
+    sta OAMDATA
+    lda #128
     sta OAMDATA
     lda #0
     sta OAMDATA
@@ -1440,6 +1622,9 @@ UpdateOver:
     inx
     cpx #6
     bne @label
+    lda score_top
+    ora #'0'
+    sta PPUDATA
     lda score_hi
     lsr a
     lsr a
@@ -1461,8 +1646,6 @@ UpdateOver:
     lda score_lo
     and #$0F
     ora #'0'
-    sta PPUDATA
-    lda #'0'
     sta PPUDATA
     rts
 .endproc
