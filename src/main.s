@@ -1222,7 +1222,13 @@ UpdateOver:
     clc
     adc #55                 ; board row 7 starts at pixel 56; OAM Y is minus one
     sta OAMDATA
-    lda #16
+    lda frame
+    lsr a
+    lsr a
+    lsr a
+    and #3
+    clc
+    adc #16
     sta OAMDATA
     lda #1                  ; sprite palette 1
     sta OAMDATA
