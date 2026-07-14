@@ -58,12 +58,14 @@ render_row:     .res 1
 temp:           .res 1
 dirty_count:    .res 1
 redraw_pending: .res 1
-dirty_x:        .res 3
-dirty_y:        .res 3
-dirty_tile:     .res 3
+dirty_x:        .res 4
+dirty_y:        .res 4
+dirty_tile:     .res 4
 pointer:        .res 2
 cell_value:     .res 1
 board_nibble:   .res 1
+old_head_x:     .res 1
+old_head_y:     .res 1
 music_mode:     .res 1
 music_step:     .res 1
 music_timer:    .res 1
@@ -376,8 +378,18 @@ UpdateOver:
     jsr SetBoardCell
     inc cell_x
     jsr GetBoardIndex
+    lda #1
+    sta cell_value
     jsr SetBoardCell
     inc cell_x
+    jsr GetBoardIndex
+    lda #(5+DIR_RIGHT)
+    sta cell_value
+    jsr SetBoardCell
+    lda #13
+    sta cell_x
+    lda #(9+DIR_LEFT)
+    sta cell_value
     jsr GetBoardIndex
     jsr SetBoardCell
     lda #0
@@ -467,12 +479,14 @@ UpdateOver:
     ldy #0
     lda (pointer),y
     sta cell_x
+    sta old_head_x
     lda head_index
     ldx head_index_hi
     jsr PointSnakeY
     ldy #0
     lda (pointer),y
     sta cell_y
+    sta old_head_y
     lda direction
     cmp #DIR_UP
     bne @right
@@ -534,6 +548,7 @@ UpdateOver:
     sta cell_value
     jsr SetBoardCell
     jsr IncrementTail
+    jsr UpdateTailTip
 @restore_new:
     lda head_index
     ldx head_index_hi
@@ -574,11 +589,14 @@ UpdateOver:
     jsr GetBoardIndex
 @test_body:
     jsr GetBoardCell
-    cmp #1
-    bne :+
+    beq @free
+    cmp #2
+    beq @free
     jmp @collision
-:
-    lda #1
+@free:
+    lda direction
+    clc
+    adc #5
     sta cell_value
     jsr SetBoardCell
     ldy dirty_count
@@ -586,7 +604,9 @@ UpdateOver:
     sta dirty_x,y
     lda cell_y
     sta dirty_y,y
-    lda #1
+    lda direction
+    clc
+    adc #5
     sta dirty_tile,y
     inc dirty_count
     jsr IncrementHead
@@ -602,6 +622,22 @@ UpdateOver:
     ldy #0
     lda cell_y
     sta (pointer),y
+    lda old_head_x
+    sta cell_x
+    lda old_head_y
+    sta cell_y
+    jsr GetBoardIndex
+    lda #1
+    sta cell_value
+    jsr SetBoardCell
+    ldy dirty_count
+    lda cell_x
+    sta dirty_x,y
+    lda cell_y
+    sta dirty_y,y
+    lda #1
+    sta dirty_tile,y
+    inc dirty_count
     lda ate_food
     beq @done
     inc snake_length
@@ -658,6 +694,78 @@ UpdateOver:
     jsr StopMusic
     jsr ClearBoardDisplay
     jsr CrashSound
+    rts
+.endproc
+
+.proc UpdateTailTip
+    lda tail_index
+    ldx tail_index_hi
+    jsr PointSnakeX
+    ldy #0
+    lda (pointer),y
+    sta cell_x
+    lda tail_index
+    ldx tail_index_hi
+    jsr PointSnakeY
+    ldy #0
+    lda (pointer),y
+    sta cell_y
+
+    lda tail_index
+    sta board_index
+    lda tail_index_hi
+    sta board_index_hi
+    inc board_index
+    bne :+
+    inc board_index_hi
+:
+    lda board_index_hi
+    cmp #>BOARD_SIZE
+    bne @next
+    lda board_index
+    cmp #<BOARD_SIZE
+    bne @next
+    lda #0
+    sta board_index
+    sta board_index_hi
+@next:
+    lda board_index
+    ldx board_index_hi
+    jsr PointSnakeX
+    ldy #0
+    lda (pointer),y
+    cmp cell_x
+    beq @vertical
+    bcc @points_right
+    lda #12                 ; body is right, tail points left
+    bne @set
+@points_right:
+    lda #10
+    bne @set
+@vertical:
+    lda board_index
+    ldx board_index_hi
+    jsr PointSnakeY
+    ldy #0
+    lda (pointer),y
+    cmp cell_y
+    bcc @points_down
+    lda #9                  ; body is below, tail points up
+    bne @set
+@points_down:
+    lda #11
+@set:
+    sta cell_value
+    jsr GetBoardIndex
+    jsr SetBoardCell
+    ldy dirty_count
+    lda cell_x
+    sta dirty_x,y
+    lda cell_y
+    sta dirty_y,y
+    lda cell_value
+    sta dirty_tile,y
+    inc dirty_count
     rts
 .endproc
 

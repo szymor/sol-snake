@@ -6,6 +6,8 @@ graphics, so the source has no external asset dependencies.
 
 The playfield is 30 by 18 cells. Board cells are packed two per byte using
 4-bit values, while the snake coordinate ring buffers use 16-bit indices.
+The snake uses distinct head and tail-tip tiles that rotate with its direction;
+intermediate segments are rendered as body tiles.
 
 The soundtrack uses pulse 2 for melody. Pulse 1 and the noise channel remain
 available for food and game-over sound effects; the triangle channel is
