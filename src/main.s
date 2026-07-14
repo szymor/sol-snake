@@ -1333,6 +1333,8 @@ UpdateOver:
     jsr RenderSnakePalette
     jsr RenderFoodSprite
     jsr RenderBonusSprite
+    lda #0
+    sta OAMADDR             ; rendering must begin with OAMADDR at zero
     jsr RenderStatus
     jsr RenderScore
     lda redraw_pending
