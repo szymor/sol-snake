@@ -17,8 +17,8 @@ DIR_RIGHT = 1
 DIR_DOWN  = 2
 DIR_LEFT  = 3
 
-BOARD_W = 14
-BOARD_H = 12
+BOARD_W = 18
+BOARD_H = 14
 BOARD_SIZE = BOARD_W * BOARD_H
 
 .segment "HEADER"
@@ -52,7 +52,7 @@ ate_food:       .res 1
 render_row:     .res 1
 temp:           .res 1
 dirty_count:    .res 1
-clear_pending:  .res 1
+redraw_pending: .res 1
 dirty_x:        .res 3
 dirty_y:        .res 3
 dirty_tile:     .res 3
@@ -140,7 +140,7 @@ UpdateTitle:
     jsr NewGame
     jmp MainLoop
 UpdateOver:
-    lda clear_pending
+    lda redraw_pending
     bne MainLoop
     lda buttons_new
     and #%00010000
@@ -209,28 +209,28 @@ UpdateOver:
 
 .proc DrawBorder
     lda #$20
-    ldx #$E8                ; row 7, column 8
+    ldx #$E6                ; row 7, column 6
     jsr SetPpuAddressAX
     lda #3
-    ldx #16
+    ldx #(BOARD_W+2)
 @top:
     sta PPUDATA
     dex
     bne @top
     lda #$22
-    ldx #$88                ; row 20, column 8
+    ldx #$C6                ; row 22, column 6
     jsr SetPpuAddressAX
     lda #3
-    ldx #16
+    ldx #(BOARD_W+2)
 @bottom:
     sta PPUDATA
     dex
     bne @bottom
     lda #$21
     sta temp
-    lda #$08                ; row 8, column 8
+    lda #$06                ; row 8, column 6
     sta render_row
-    ldy #12
+    ldy #BOARD_H
 @sides:
     lda temp
     ldx render_row
@@ -241,7 +241,7 @@ UpdateOver:
     ldx render_row
     txa
     clc
-    adc #15
+    adc #(BOARD_W+1)
     tax
     lda temp
     jsr SetPpuAddressAX
@@ -305,43 +305,39 @@ UpdateOver:
     lda #3
     sta snake_length
     ldx #0
-    lda #5
-    sta snake_x,x
-    lda #6
-    sta snake_y,x
-    inx
-    lda #6
-    sta snake_x,x
-    lda #6
-    sta snake_y,x
-    inx
     lda #7
     sta snake_x,x
-    lda #6
+    lda #7
     sta snake_y,x
-    lda #89
-    ; The three initial body cells occupy row 6.
+    inx
+    lda #8
+    sta snake_x,x
+    lda #7
+    sta snake_y,x
+    inx
+    lda #9
+    sta snake_x,x
+    lda #7
+    sta snake_y,x
     lda #1
-    sta board+84+5
-    sta board+84+6
-    sta board+84+7
+    sta board+(7*BOARD_W)+7
+    sta board+(7*BOARD_W)+8
+    sta board+(7*BOARD_W)+9
     lda #0
     sta dirty_count
     jsr PlaceFood
     lda #0
-    sta PPUCTRL
-    sta PPUMASK
-    jsr RenderBoard
-    lda #%10000000
-    sta PPUCTRL
-    lda #%00001010
-    sta PPUMASK
+    sta dirty_count
+    lda #BOARD_H
+    sta redraw_pending
     lda #STATE_PLAY
     sta state
     rts
 .endproc
 
 .proc UpdatePlaying
+    lda redraw_pending
+    bne @done
     lda buttons_new
     and #%00010000
     beq @directions
@@ -589,7 +585,7 @@ UpdateOver:
     bne @clear
     sta dirty_count
     lda #BOARD_H
-    sta clear_pending
+    sta redraw_pending
     rts
 .endproc
 
@@ -688,9 +684,9 @@ UpdateOver:
     pha
     jsr RenderStatus
     jsr RenderScore
-    lda clear_pending
+    lda redraw_pending
     beq @dirty
-    jsr RenderClearRow
+    jsr RenderBoardRow
     jmp @rendered
 @dirty:
     jsr RenderDirtyCells
@@ -707,14 +703,25 @@ UpdateOver:
     rti
 .endproc
 
-.proc RenderClearRow
+.proc RenderBoardRow
     lda #BOARD_H
     sec
-    sbc clear_pending
+    sbc redraw_pending
     sta render_row
+    lda #0
+    ldx render_row
+@index:
+    cpx #0
+    beq @index_done
+    clc
+    adc #BOARD_W
+    dex
+    bne @index
+@index_done:
+    sta board_index
     lda #$21
     sta temp
-    lda #$09
+    lda #$07                ; row 8, column 7
     ldx render_row
 @address:
     cpx #0
@@ -730,13 +737,15 @@ UpdateOver:
     tax
     lda temp
     jsr SetPpuAddressAX
-    lda #0
-    ldx #BOARD_W
+    ldx board_index
+    ldy #BOARD_W
 @tile:
+    lda board,x
     sta PPUDATA
-    dex
+    inx
+    dey
     bne @tile
-    dec clear_pending
+    dec redraw_pending
     rts
 .endproc
 
@@ -747,7 +756,7 @@ UpdateOver:
     beq @done
     lda #$21
     sta temp
-    lda #$09
+    lda #$07
     clc
     adc dirty_x,y
     ldx dirty_y,y
@@ -863,7 +872,7 @@ UpdateOver:
 .proc RenderBoard
     lda #$21
     sta temp
-    lda #$09                ; row 8, column 9
+    lda #$07                ; row 8, column 7
     sta render_row
     ldx #0
     ldy #BOARD_H

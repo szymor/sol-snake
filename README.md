@@ -4,6 +4,8 @@ A small Snake game for the Nintendo Entertainment System, written in 6502
 assembly. It uses the mapper-free NROM cartridge format and generated CHR-ROM
 graphics, so the source has no external asset dependencies.
 
+The playfield is 18 by 14 cells.
+
 ## Build
 
 Install the Debian packages and build the ROM:
