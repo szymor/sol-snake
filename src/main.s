@@ -641,11 +641,11 @@ UpdateOver:
 .proc EatSound
     lda #%00000001
     sta APUSTATUS
-    lda #%10111111
+    lda #%10001111          ; duty 2, finite length, constant volume 15
     sta $4000
     lda #$40
     sta $4002
-    lda #$08
+    lda #$18                ; two-frame length counter
     sta $4003
     rts
 .endproc
@@ -653,11 +653,11 @@ UpdateOver:
 .proc CrashSound
     lda #%00001000
     sta APUSTATUS
-    lda #%00111111
+    lda #%00011111          ; finite length, constant volume 15
     sta $400C
     lda #$08
     sta $400E
-    lda #$18
+    lda #$38                ; six-frame length counter
     sta $400F
     rts
 .endproc
