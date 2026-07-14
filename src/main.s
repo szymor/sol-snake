@@ -95,15 +95,11 @@ note_hi: .byte $00, $06, $04, $04, $03, $01, $01, $01, $01, $01, $00, $00
 title_melody:
     .byte 5, 7, 9, 11, 9, 7, 5, 0, 6, 8, 10, 9, 8, 6, 5, 0
     .byte 5, 8, 7, 10, 9, 11, 9, 7, 6, 8, 7, 6, 5, 0, 5, 0
-title_bass:
-    .byte 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0
-    .byte 1, 0, 0, 0, 2, 0, 3, 0, 1, 0, 3, 0, 1, 0, 0, 0
 game_melody:
-    .byte 5, 7, 8, 7, 5, 7, 9, 7, 6, 8, 10, 8, 6, 8, 9, 8
-    .byte 5, 8, 9, 8, 7, 9, 11, 9, 6, 8, 9, 7, 6, 7, 5, 0
-game_bass:
-    .byte 1, 0, 3, 0, 1, 0, 3, 0, 2, 0, 1, 0, 2, 0, 3, 0
-    .byte 1, 0, 4, 0, 2, 0, 3, 0, 1, 0, 3, 0, 1, 0, 3, 0
+    .byte 5, 0, 7, 8, 0, 7, 5, 0, 6, 0, 8, 9, 0, 8, 6, 0
+    .byte 5, 7, 0, 8, 9, 0, 7, 0, 6, 8, 0, 7, 5, 0, 0, 0
+    .byte 7, 0, 8, 10, 0, 9, 8, 0, 6, 0, 8, 9, 0, 7, 6, 0
+    .byte 5, 0, 8, 7, 0, 6, 5, 0, 7, 9, 0, 8, 6, 0, 5, 0
 
 .segment "CODE"
 .proc Reset
@@ -886,7 +882,7 @@ UpdateOver:
     lda #0
     sta music_step
     sta music_timer
-    lda #%00000110
+    lda #%00000010
     sta APUSTATUS
     rts
 .endproc
@@ -897,7 +893,7 @@ UpdateOver:
     lda #0
     sta music_step
     sta music_timer
-    lda #%00000110
+    lda #%00000010
     sta APUSTATUS
     rts
 .endproc
@@ -915,7 +911,7 @@ UpdateOver:
     sta music_mode
     lda #0
     sta music_timer
-    lda #%00000110
+    lda #%00000010
     sta APUSTATUS
     rts
 .endproc
@@ -943,21 +939,24 @@ UpdateOver:
     bne @game
     lda title_melody,x
     jsr PlayPulse2Note
-    lda title_bass,x
-    jsr PlayTriangleNote
     lda #12
     bne @tempo
 @game:
     lda game_melody,x
     jsr PlayPulse2Note
-    lda game_bass,x
-    jsr PlayTriangleNote
-    lda #8
+    lda #14
 @tempo:
     sta music_timer
     inc music_step
     lda music_step
+    ldx music_mode
+    cpx #1
+    bne @game_length
     and #$1F
+    beq @store_step
+@game_length:
+    and #$3F
+@store_step:
     sta music_step
 @done:
     rts
@@ -970,7 +969,7 @@ UpdateOver:
     sta $4004
     rts
 @note:
-    lda #%10111000          ; duty 2, sustained, constant volume 8
+    lda #%01110100          ; duty 1, sustained, constant volume 4
     sta $4004
     lda note_lo,x
     sta $4006
@@ -980,25 +979,8 @@ UpdateOver:
     rts
 .endproc
 
-.proc PlayTriangleNote
-    tax
-    bne @note
-    lda #0
-    sta $4008
-    rts
-@note:
-    lda #$81                ; sustained triangle with linear counter reload
-    sta $4008
-    lda note_lo,x
-    sta $400A
-    lda note_hi,x
-    ora #$F8
-    sta $400B
-    rts
-.endproc
-
 .proc EatSound
-    lda #%00000111
+    lda #%00000011
     sta APUSTATUS
     lda #%10001111          ; duty 2, finite length, constant volume 15
     sta $4000
