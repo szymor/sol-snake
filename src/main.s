@@ -17,8 +17,8 @@ DIR_RIGHT = 1
 DIR_DOWN  = 2
 DIR_LEFT  = 3
 
-BOARD_W = 18
-BOARD_H = 14
+BOARD_W = 26
+BOARD_H = 18
 BOARD_SIZE = BOARD_W * BOARD_H
 
 .segment "HEADER"
@@ -39,8 +39,11 @@ next_direction: .res 1
 move_timer:     .res 1
 speed:          .res 1
 head_index:     .res 1
+head_index_hi:  .res 1
 tail_index:     .res 1
+tail_index_hi:  .res 1
 snake_length:   .res 1
+snake_length_hi:.res 1
 score_lo:       .res 1
 score_hi:       .res 1
 rng_lo:         .res 1
@@ -48,6 +51,7 @@ rng_hi:         .res 1
 cell_x:         .res 1
 cell_y:         .res 1
 board_index:    .res 1
+board_index_hi: .res 1
 ate_food:       .res 1
 render_row:     .res 1
 temp:           .res 1
@@ -56,6 +60,7 @@ redraw_pending: .res 1
 dirty_x:        .res 3
 dirty_y:        .res 3
 dirty_tile:     .res 3
+pointer:        .res 2
 
 .segment "BSS"
 board:   .res BOARD_SIZE
@@ -186,8 +191,8 @@ UpdateOver:
     inx
     cpx #(title_text_end-title_text)
     bne @title
-    lda #$22
-    ldx #$E3
+    lda #$23
+    ldx #$63                ; row 27, column 3
     jsr SetPpuAddressAX
     ldx #0
 @help:
@@ -209,7 +214,7 @@ UpdateOver:
 
 .proc DrawBorder
     lda #$20
-    ldx #$E6                ; row 7, column 6
+    ldx #$C2                ; row 6, column 2
     jsr SetPpuAddressAX
     lda #3
     ldx #(BOARD_W+2)
@@ -217,8 +222,8 @@ UpdateOver:
     sta PPUDATA
     dex
     bne @top
-    lda #$22
-    ldx #$C6                ; row 22, column 6
+    lda #$23
+    ldx #$22                ; row 25, column 2
     jsr SetPpuAddressAX
     lda #3
     ldx #(BOARD_W+2)
@@ -226,9 +231,9 @@ UpdateOver:
     sta PPUDATA
     dex
     bne @bottom
-    lda #$21
+    lda #$20
     sta temp
-    lda #$06                ; row 8, column 6
+    lda #$E2                ; row 7, column 2
     sta render_row
     ldy #BOARD_H
 @sides:
@@ -244,6 +249,7 @@ UpdateOver:
     adc #(BOARD_W+1)
     tax
     lda temp
+    adc #0
     jsr SetPpuAddressAX
     lda #3
     sta PPUDATA
@@ -284,12 +290,29 @@ UpdateOver:
 
 .proc NewGame
     lda #0
-    ldx #0
+    sta pointer
+    lda #>board
+    sta pointer+1
+    ldx #<board
+    stx pointer
+    lda #0
+    ldy #0
+    ldx #>BOARD_SIZE
 @clear:
-    sta board,x
-    inx
-    cpx #BOARD_SIZE
+    sta (pointer),y
+    iny
     bne @clear
+    inc pointer+1
+    dex
+    bne @clear
+    ldx #<BOARD_SIZE
+    beq @cleared
+@remainder:
+    sta (pointer),y
+    iny
+    dex
+    bne @remainder
+@cleared:
     lda #DIR_RIGHT
     sta direction
     sta next_direction
@@ -298,31 +321,35 @@ UpdateOver:
     sta move_timer
     lda #0
     sta tail_index
+    sta tail_index_hi
     sta score_lo
     sta score_hi
+    sta snake_length_hi
     lda #2
     sta head_index
+    lda #0
+    sta head_index_hi
     lda #3
     sta snake_length
     ldx #0
-    lda #7
+    lda #11
     sta snake_x,x
-    lda #7
-    sta snake_y,x
-    inx
-    lda #8
-    sta snake_x,x
-    lda #7
-    sta snake_y,x
-    inx
     lda #9
+    sta snake_y,x
+    inx
+    lda #12
     sta snake_x,x
-    lda #7
+    lda #9
+    sta snake_y,x
+    inx
+    lda #13
+    sta snake_x,x
+    lda #9
     sta snake_y,x
     lda #1
-    sta board+(7*BOARD_W)+7
-    sta board+(7*BOARD_W)+8
-    sta board+(7*BOARD_W)+9
+    sta board+(9*BOARD_W)+11
+    sta board+(9*BOARD_W)+12
+    sta board+(9*BOARD_W)+13
     lda #0
     sta dirty_count
     jsr PlaceFood
@@ -401,10 +428,17 @@ UpdateOver:
 .proc MoveSnake
     lda next_direction
     sta direction
-    ldx head_index
-    lda snake_x,x
+    lda head_index
+    ldx head_index_hi
+    jsr PointSnakeX
+    ldy #0
+    lda (pointer),y
     sta cell_x
-    lda snake_y,x
+    lda head_index
+    ldx head_index_hi
+    jsr PointSnakeY
+    ldy #0
+    lda (pointer),y
     sta cell_y
     lda direction
     cmp #DIR_UP
@@ -435,8 +469,9 @@ UpdateOver:
     jmp @collision
 :
     jsr GetBoardIndex
-    ldx board_index
-    lda board,x
+    jsr PointBoard
+    ldy #0
+    lda (pointer),y
     cmp #2
     bne @not_food
     lda #1
@@ -445,32 +480,42 @@ UpdateOver:
 @not_food:
     lda #0
     sta ate_food
-    ldx tail_index
-    lda snake_y,x
+    lda tail_index
+    ldx tail_index_hi
+    jsr PointSnakeY
+    ldy #0
+    lda (pointer),y
     sta cell_y
     ldy dirty_count
     sta dirty_y,y
-    lda snake_x,x
+    lda tail_index
+    ldx tail_index_hi
+    jsr PointSnakeX
+    ldy #0
+    lda (pointer),y
     sta cell_x
     sta dirty_x,y
     lda #0
     sta dirty_tile,y
     inc dirty_count
     jsr GetBoardIndex
-    ldx board_index
+    jsr PointBoard
+    ldy #0
     lda #0
-    sta board,x
-    inc tail_index
-    lda tail_index
-    cmp #BOARD_SIZE
-    bcc @restore_new
-    lda #0
-    sta tail_index
+    sta (pointer),y
+    jsr IncrementTail
 @restore_new:
-    ldx head_index
-    lda snake_x,x
+    lda head_index
+    ldx head_index_hi
+    jsr PointSnakeX
+    ldy #0
+    lda (pointer),y
     sta temp
-    lda snake_y,x
+    lda head_index
+    ldx head_index_hi
+    jsr PointSnakeY
+    ldy #0
+    lda (pointer),y
     pha
     lda cell_x
     ; cell coordinates currently contain the removed tail, restore new head below.
@@ -498,12 +543,15 @@ UpdateOver:
 @new_index:
     jsr GetBoardIndex
 @test_body:
-    ldx board_index
-    lda board,x
+    jsr PointBoard
+    ldy #0
+    lda (pointer),y
     cmp #1
-    beq @collision
+    bne :+
+    jmp @collision
+:
     lda #1
-    sta board,x
+    sta (pointer),y
     ldy dirty_count
     lda cell_x
     sta dirty_x,y
@@ -512,21 +560,25 @@ UpdateOver:
     lda #1
     sta dirty_tile,y
     inc dirty_count
-    inc head_index
+    jsr IncrementHead
     lda head_index
-    cmp #BOARD_SIZE
-    bcc :+
-    lda #0
-    sta head_index
-:
-    ldx head_index
+    ldx head_index_hi
+    jsr PointSnakeX
+    ldy #0
     lda cell_x
-    sta snake_x,x
+    sta (pointer),y
+    lda head_index
+    ldx head_index_hi
+    jsr PointSnakeY
+    ldy #0
     lda cell_y
-    sta snake_y,x
+    sta (pointer),y
     lda ate_food
     beq @done
     inc snake_length
+    bne :+
+    inc snake_length_hi
+:
     inc score_lo
     lda score_lo
     and #$0F
@@ -561,9 +613,13 @@ UpdateOver:
     dec speed
 :
     jsr EatSound
+    lda snake_length_hi
+    cmp #>BOARD_SIZE
+    bne :+
     lda snake_length
-    cmp #BOARD_SIZE
+    cmp #<BOARD_SIZE
     beq @collision
+:
     jsr PlaceFood
 @done:
     rts
@@ -576,13 +632,28 @@ UpdateOver:
 .endproc
 
 .proc ClearBoardDisplay
+    lda #<board
+    sta pointer
+    lda #>board
+    sta pointer+1
     lda #0
-    ldx #0
+    ldy #0
+    ldx #>BOARD_SIZE
 @clear:
-    sta board,x
-    inx
-    cpx #BOARD_SIZE
+    sta (pointer),y
+    iny
     bne @clear
+    inc pointer+1
+    dex
+    bne @clear
+    ldx #<BOARD_SIZE
+    beq @cleared
+@remainder:
+    sta (pointer),y
+    iny
+    dex
+    bne @remainder
+@cleared:
     sta dirty_count
     lda #BOARD_H
     sta redraw_pending
@@ -591,18 +662,96 @@ UpdateOver:
 
 .proc GetBoardIndex
     lda #0
+    sta board_index
+    sta board_index_hi
     ldx cell_y
 @row:
     cpx #0
     beq @column
+    lda board_index
     clc
     adc #BOARD_W
+    sta board_index
+    bcc :+
+    inc board_index_hi
+:
     dex
     bne @row
 @column:
+    lda board_index
     clc
     adc cell_x
     sta board_index
+    bcc :+
+    inc board_index_hi
+:
+    rts
+.endproc
+
+.proc PointBoard
+    lda board_index
+    clc
+    adc #<board
+    sta pointer
+    lda board_index_hi
+    adc #>board
+    sta pointer+1
+    rts
+.endproc
+
+.proc PointSnakeX
+    clc
+    adc #<snake_x
+    sta pointer
+    txa
+    adc #>snake_x
+    sta pointer+1
+    rts
+.endproc
+
+.proc PointSnakeY
+    clc
+    adc #<snake_y
+    sta pointer
+    txa
+    adc #>snake_y
+    sta pointer+1
+    rts
+.endproc
+
+.proc IncrementHead
+    inc head_index
+    bne :+
+    inc head_index_hi
+:
+    lda head_index_hi
+    cmp #>BOARD_SIZE
+    bne @done
+    lda head_index
+    cmp #<BOARD_SIZE
+    bne @done
+    lda #0
+    sta head_index
+    sta head_index_hi
+@done:
+    rts
+.endproc
+
+.proc IncrementTail
+    inc tail_index
+    bne :+
+    inc tail_index_hi
+:
+    lda tail_index_hi
+    cmp #>BOARD_SIZE
+    bne @done
+    lda tail_index
+    cmp #<BOARD_SIZE
+    bne @done
+    lda #0
+    sta tail_index
+    sta tail_index_hi
+@done:
     rts
 .endproc
 
@@ -610,22 +759,23 @@ UpdateOver:
 @try:
     jsr RandomStep
     lda rng_lo
-    and #$0F
+    and #$1F
     cmp #BOARD_W
     bcs @try
     sta cell_x
     jsr RandomStep
     lda rng_hi
-    and #$0F
+    and #$1F
     cmp #BOARD_H
     bcs @try
     sta cell_y
     jsr GetBoardIndex
-    ldx board_index
-    lda board,x
+    jsr PointBoard
+    ldy #0
+    lda (pointer),y
     bne @try
     lda #2
-    sta board,x
+    sta (pointer),y
     ldy dirty_count
     lda cell_x
     sta dirty_x,y
@@ -682,6 +832,18 @@ UpdateOver:
     pha
     tya
     pha
+    lda pointer
+    pha
+    lda pointer+1
+    pha
+    lda board_index
+    pha
+    lda board_index_hi
+    pha
+    lda temp
+    pha
+    lda render_row
+    pha
     jsr RenderStatus
     jsr RenderScore
     lda redraw_pending
@@ -696,6 +858,18 @@ UpdateOver:
     sta PPUADDR
     inc frame
     pla
+    sta render_row
+    pla
+    sta temp
+    pla
+    sta board_index_hi
+    pla
+    sta board_index
+    pla
+    sta pointer+1
+    pla
+    sta pointer
+    pla
     tay
     pla
     tax
@@ -709,19 +883,23 @@ UpdateOver:
     sbc redraw_pending
     sta render_row
     lda #0
+    sta board_index_hi
     ldx render_row
 @index:
     cpx #0
     beq @index_done
     clc
     adc #BOARD_W
+    bcc :+
+    inc board_index_hi
+:
     dex
     bne @index
 @index_done:
     sta board_index
-    lda #$21
+    lda #$20
     sta temp
-    lda #$07                ; row 8, column 7
+    lda #$E3                ; row 7, column 3
     ldx render_row
 @address:
     cpx #0
@@ -737,13 +915,14 @@ UpdateOver:
     tax
     lda temp
     jsr SetPpuAddressAX
-    ldx board_index
-    ldy #BOARD_W
+    jsr PointBoard
+    ldy #0
+    ldx #BOARD_W
 @tile:
-    lda board,x
+    lda (pointer),y
     sta PPUDATA
-    inx
-    dey
+    iny
+    dex
     bne @tile
     dec redraw_pending
     rts
@@ -754,9 +933,9 @@ UpdateOver:
 @cell:
     cpy dirty_count
     beq @done
-    lda #$21
+    lda #$20
     sta temp
-    lda #$07
+    lda #$E3
     clc
     adc dirty_x,y
     ldx dirty_y,y
@@ -866,43 +1045,6 @@ UpdateOver:
     sta PPUDATA
     lda #'0'
     sta PPUDATA
-    rts
-.endproc
-
-.proc RenderBoard
-    lda #$21
-    sta temp
-    lda #$07                ; row 8, column 7
-    sta render_row
-    ldx #0
-    ldy #BOARD_H
-@row:
-    lda temp
-    pha
-    txa
-    pha
-    ldx render_row
-    jsr SetPpuAddressAX
-    pla
-    tax
-    pla
-    lda #BOARD_W
-    sta board_index
-@cell:
-    lda board,x
-    sta PPUDATA
-    inx
-    dec board_index
-    bne @cell
-    lda render_row
-    clc
-    adc #32
-    sta render_row
-    bcc :+
-    inc temp
-:
-    dey
-    bne @row
     rts
 .endproc
 

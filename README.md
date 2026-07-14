@@ -4,7 +4,8 @@ A small Snake game for the Nintendo Entertainment System, written in 6502
 assembly. It uses the mapper-free NROM cartridge format and generated CHR-ROM
 graphics, so the source has no external asset dependencies.
 
-The playfield is 18 by 14 cells.
+The playfield is 26 by 18 cells. Its board and snake ring-buffer indices are
+16-bit, allowing the 468-cell field to exceed the 6502's 256-byte page size.
 
 ## Build
 
