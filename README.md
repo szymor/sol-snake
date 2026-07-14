@@ -10,6 +10,8 @@ The snake uses distinct head and tail-tip tiles that rotate with its direction;
 intermediate segments use slim horizontal, vertical, and corner tiles. Food is
 rendered as a hardware sprite, leaving all packed tile values available for the
 snake and walls.
+Snake graphics use a dedicated palette color that cycles through bright colors
+after every 16 pieces of food.
 
 The soundtrack uses pulse 2 for melody. Pulse 1 and the noise channel remain
 available for food and game-over sound effects; the triangle channel is

@@ -122,9 +122,12 @@ def main():
         for frame, rows in enumerate(frames):
             index = 128 + animation * 4 + frame
             directional[index] = rows
-    output[16:32] = bytes(rotate_clockwise(body_horizontal) + [0] * 8)
+    output[16:32] = bytes([0] * 8 + rotate_clockwise(body_horizontal))
     for index, rows in directional.items():
-        output[index * 16:index * 16 + 16] = bytes(rows + [0] * 8)
+        if 2 <= index <= 14:
+            output[index * 16:index * 16 + 16] = bytes([0] * 8 + rows)
+        else:
+            output[index * 16:index * 16 + 16] = bytes(rows + [0] * 8)
     for char, rows in FONT.items():
         start = ord(char) * 16
         output[start:start + 16] = tile(rows)

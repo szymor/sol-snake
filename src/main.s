@@ -75,6 +75,8 @@ food_animation: .res 1
 music_mode:     .res 1
 music_step:     .res 1
 music_timer:    .res 1
+food_count:     .res 1
+snake_color:    .res 1
 
 .segment "BSS"
 board:   .res BOARD_BYTES
@@ -114,6 +116,8 @@ corner_tiles:
     .byte 14, 0, 4, 0       ; right -> up/down connects from left
     .byte 0, 3, 0, 14       ; down -> right/left connects from above
     .byte 3, 0, 2, 0        ; left -> up/down connects from right
+snake_colors:
+    .byte $1A, $2A, $27, $28, $25, $2C, $21, $30
 
 .segment "CODE"
 .proc Reset
@@ -371,7 +375,10 @@ UpdateOver:
     sta tail_index_hi
     sta score_lo
     sta score_hi
+    sta food_count
     sta snake_length_hi
+    lda snake_colors
+    sta snake_color
     lda #2
     sta head_index
     lda #0
@@ -671,6 +678,20 @@ UpdateOver:
     inc snake_length
     bne :+
     inc snake_length_hi
+:
+    inc food_count
+    lda food_count
+    and #$0F
+    bne :+
+    lda food_count
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    and #7
+    tax
+    lda snake_colors,x
+    sta snake_color
 :
     inc score_lo
     lda score_lo
@@ -1178,6 +1199,7 @@ UpdateOver:
     pha
     lda board_nibble
     pha
+    jsr RenderSnakePalette
     jsr RenderFoodSprite
     jsr RenderStatus
     jsr RenderScore
@@ -1212,6 +1234,15 @@ UpdateOver:
     tax
     pla
     rti
+.endproc
+
+.proc RenderSnakePalette
+    lda #$3F
+    ldx #$02
+    jsr SetPpuAddressAX
+    lda snake_color
+    sta PPUDATA
+    rts
 .endproc
 
 .proc RenderFoodSprite
