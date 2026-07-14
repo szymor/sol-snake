@@ -71,6 +71,7 @@ old_head_y:     .res 1
 old_direction:  .res 1
 food_x:         .res 1
 food_y:         .res 1
+food_animation: .res 1
 music_mode:     .res 1
 music_step:     .res 1
 music_timer:    .res 1
@@ -1008,6 +1009,10 @@ UpdateOver:
     sta food_x
     lda cell_y
     sta food_y
+    jsr RandomStep
+    lda rng_lo
+    and #$1C
+    sta food_animation
     rts
 .endproc
 
@@ -1228,7 +1233,8 @@ UpdateOver:
     lsr a
     and #3
     clc
-    adc #16
+    adc food_animation
+    adc #128
     sta OAMDATA
     lda #1                  ; sprite palette 1
     sta OAMDATA
